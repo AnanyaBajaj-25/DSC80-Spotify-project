@@ -5,22 +5,24 @@
 
 ## Introduction
 
-In this project, I examined a dataset of Spotify tracks spanning 5 musically distinct 
-genres: classical, metal, hip-hop, country, and EDM. The dataset was collected via the 
-Spotify Web API and adapted from the 
+In this project, I examined a dataset collected via the Spotify Web API, adapted from the 
 [Spotify Dataset 1921-2020](https://www.kaggle.com/datasets/yamaerenay/spotify-dataset-19212020-600k-tracks) 
-by Yamac Eren Ay on Kaggle.
+by Yamac Eren Ay on Kaggle. The original dataset spans 114 genres, but I narrowed my 
+analysis to 5 musically distinct genres: classical, metal, hip-hop, country, and EDM — 
+chosen to represent a wide range of explicit content rates, from classical where explicit 
+tracks are nearly nonexistent, to hip-hop and metal where explicit content is common.
 
 My central research question is: **Do explicit tracks tend to be more popular than 
 non-explicit tracks?**
 
-This question has real implications beyond data science. Explicit content has long been 
-a point of cultural debate from parental advisory labels to platform content filters 
-today. Explicit tracks are excluded from certain Spotify playlists and filtered for 
-younger listeners, which could limit their reach. Yet genres like hip-hop and metal 
-treat explicit language as core to their artistic identity. If explicit tracks are 
-systematically more popular despite these restrictions, it raises important questions 
-about how streaming algorithms shape what gets heard and who benefits.
+This question addresses an important cultural debate, from parental advisory labels 
+to platform content filters today. Explicit tracks are intentionally excluded from 
+certain curated playlists to limit exposure to profanity, particularly for younger 
+listeners. Despite this, genres like hip-hop and metal treat explicit language as 
+core to their artistic identity, making these restrictions less effective in practice. 
+If explicit tracks consistently end up being more popular despite these limitations, 
+it raises an important question about how streaming algorithms shape what gets heard 
+and who benefits.
 
 The dataset was constructed by merging two source files: `music_tracks.csv` 
 (track-level audio features and metadata) and `artists.csv` (artist-level 
@@ -32,10 +34,10 @@ The columns most relevant to my question are:
 | Column | Description |
 |---|---|
 | `track_name` | Name of the track |
-| `track_genre` | Genre of the track (classical, metal, hip-hop, country, or EDM) |
+| `track_genre` | Genre of the track, as labeled by Spotify |
 | `popularity` | Spotify popularity score from 0–100, based on total plays and recency |
 | `popular` | Binary indicator of whether popularity ≥ 70 |
-| `danceability` | How suitable the track is for dancing, based on tempo and rhythm (0–1) |
+| `danceability` | How suitable the track is for dancing, based on tempo, rhythm, and beat strength (0–1) |
 | `energy` | Perceptual intensity of the track — loud, fast tracks score high (0–1) |
 | `loudness` | Overall loudness in decibels (typically −60 to 0 dB) |
 | `speechiness` | Presence of spoken words in the track (0–1) |
@@ -61,7 +63,7 @@ all tracks even if the artist was not found in `artists.csv`, resulting in some 
 values in the `followers` column.
 
 2. **Filtered to 5 genres**: I selected classical, metal, hip-hop, country, and EDM 
-to represent a wide range of explicit content rates — from genres with almost no 
+to represent a wide range of explicit content rates from genres with almost no 
 explicit tracks (classical) to genres where explicit content is common (hip-hop, metal).
 
 3. **Extracted release year**: The `release_date` column had inconsistent formats 
@@ -241,3 +243,131 @@ dataset and not a randomized controlled trial, we cannot conclude that explicit
 content directly causes higher popularity. Other factors such as genre or artist 
 following size may contribute to this pattern.
 
+## Framing a Prediction Problem
+
+**Prediction Problem:** Predict whether a track will be popular (popularity ≥ 70) 
+from its audio and metadata features.
+
+**Type:** Binary classification — the response variable `popular` takes two values: 
+True (popular) and False (not popular).
+
+**Response Variable:** `popular` — a binary column derived from Spotify's popularity 
+score, where tracks with a score ≥ 70 are considered popular. This threshold was 
+chosen because it represents approximately the top 13% of tracks in the dataset, 
+capturing mainstream hits rather than moderately streamed songs.
+
+**Evaluation Metric:** F1-score was chosen over accuracy because the dataset is 
+heavily imbalanced. 87% of tracks are non-popular. A model that simply predicts 
+"not popular" for every track would achieve 87% accuracy while being completely 
+useless. F1-score balances precision and recall, penalizing models that ignore the 
+minority class.
+
+**Features at Time of Prediction:** All features used in the model are known at the 
+time a track is released — audio features (`danceability`, `energy`, `loudness`) are 
+computed by Spotify's algorithms from the audio file itself, `explicit` and 
+`track_genre` are metadata known at release, and `release_year` is known at the time 
+of release. Artist `followers` is a borderline case — follower count grows over time, 
+but a baseline count is available at release. This is noted as a limitation of the model.
+
+## Baseline Model
+
+**Model:** Decision Tree Classifier
+
+**Features:**
+- `explicit` (nominal) — directly tied to the research question; passed through 
+as-is since it is already binary (True/False)
+- `track_genre` (nominal) — provides genre context; encoded using OneHotEncoder 
+since it is a categorical variable with 5 unique values
+
+**Encodings:** OneHotEncoder was applied to `track_genre` to convert genre labels 
+into numerical columns the model can interpret. `explicit` was passed through 
+as-is since it is already binary. Both transformations were implemented inside a 
+single sklearn Pipeline to prevent data leakage.
+
+**Class Imbalance:** `class_weight='balanced'` was used to address the 87% 
+non-popular class imbalance. Without this, the model predicted all tracks as 
+non-popular, resulting in an F1 score of 0.
+
+**Performance:** The baseline model achieved an **F1 score of 0.332** on the 
+held-out test set (20% of the data). This performance is expected to be low.
+The model uses only two features and a simple decision tree, providing a 
+benchmark for the final model to improve upon.
+
+## Final Model
+
+**Model:** Random Forest Classifier
+
+**Features Added:**
+- `danceability` (quantitative) — passed through as raw continuous value. 
+Danceable songs are more likely to be played at social events and shared on 
+platforms, driving streams and popularity.
+- `energy` (quantitative) — passed through as raw continuous value. High energy 
+songs tend to dominate playlists and radio, increasing their likelihood of 
+accumulating streams.
+- `loudness` (quantitative) — passed through as raw continuous value. Louder, 
+more produced tracks tend to be more radio-ready, correlating with higher popularity 
+due to modern music production trends.
+- `release_year` (quantitative, binarized) — binarized at a threshold of 2010 to 
+distinguish pre-streaming era tracks from streaming era tracks. Spotify's growth 
+after 2010 significantly increased the potential audience for new releases, making 
+this a meaningful categorical split.
+- `followers` (quantitative) — imputed using median via `SimpleImputer` inside the 
+pipeline to prevent data leakage. Artist follower count is a strong predictor of 
+popularity since larger artists have built-in audiences that will stream their tracks 
+regardless of audio features.
+
+Raw continuous values were kept for audio features since Random Forest splits on 
+thresholds rather than distances, making scaling unnecessary and potentially harmful 
+by discarding information.
+
+**Hyperparameter Tuning:** GridSearchCV with 5-fold cross validation was used to 
+tune three hyperparameters:
+- `n_estimators` — number of trees in the forest; more trees reduces variance
+- `max_depth` — controls overfitting; too deep memorizes training data
+- `min_samples_split` — minimum samples required to split a node; higher values 
+prevent learning noise in small groups
+
+**Best Hyperparameters:** `max_depth=10`, `min_samples_split=10`, `n_estimators=100`
+
+**Performance:** The final model achieved an **F1 score of 0.421** on the same 
+held-out test set used for the baseline model, representing a **26.8% relative 
+improvement** over the baseline F1 of 0.332. The most impactful addition was the 
+`followers` feature, which improved F1 from 0.364 to 0.421, reflecting the strong 
+relationship between artist following and track popularity.
+
+## Fairness Analysis
+
+**Groups:**
+- **Group X:** Explicit tracks
+- **Group Y:** Non-explicit tracks
+
+**Evaluation Metric:** Precision — measures how many tracks predicted as popular 
+are actually popular. This metric was chosen because it directly captures whether 
+the model is making reliable positive predictions for each group.
+
+**Null Hypothesis:** Our model is fair. Its precision for explicit and non-explicit 
+tracks are roughly the same, and any differences are due to random chance.
+
+**Alternative Hypothesis:** Our model is unfair. Its precision for non-explicit 
+tracks is lower than for explicit tracks.
+
+**Test Statistic:** Difference in precision (explicit minus non-explicit). A 
+one-tailed test was used since we observed that explicit tracks had higher precision 
+and wanted to test whether this difference was statistically significant.
+
+**Significance Level:** 0.05
+
+**Results:**
+- Precision (Explicit): 0.562
+- Precision (Non-Explicit): 0.301
+- Observed Difference: 0.262
+- **P-value:** 0.008
+
+With a p-value of 0.008, which is below the 0.05 significance threshold, we reject 
+the null hypothesis. The results suggest that our model may not be fair — it achieves 
+notably higher precision for explicit tracks than non-explicit tracks. This disparity 
+likely reflects the association between explicit content and popularity that the model 
+learned during training, making it better at identifying popular explicit tracks than 
+popular non-explicit ones. However, since we are performing a statistical test and not 
+a randomized controlled trial, we cannot conclude with certainty that our model is 
+unfair — only that the observed difference is unlikely to be due to random chance alone.
