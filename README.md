@@ -156,3 +156,88 @@ genre-level imbalance noted earlier.
 | hip-hop       |      59 |      1 |
 | metal         |      52 |     65 |
 
+
+## Assessment of Missingness
+
+### NMAR Analysis
+
+The `followers` column contains missing values that I believe are **NMAR** (Not Missing 
+At Random). The missingness is likely related to the value itself. Artists with very 
+few or zero followers may not have been fully indexed by Spotify's API at the time the 
+data was collected, meaning the most obscure artists are the ones most likely to have 
+missing follower data. To make this MAR, I would need additional data such as the 
+date each artist's profile was created or whether the artist is still active on Spotify.
+
+### Missingness Dependency
+
+I performed two permutation tests to assess whether the missingness of `followers` 
+depends on other columns.
+
+**Test 1: Followers Missingness vs. Popularity**
+
+- **Null Hypothesis:** The missingness of `followers` does not depend on `popularity`.
+- **Alternative Hypothesis:** The missingness of `followers` depends on `popularity`.
+- **Test Statistic:** Absolute difference in mean popularity between missing and non-missing groups.
+- **P-value:** Around 0.837
+
+With a p-value of around 0.837, we fail to reject the null hypothesis. The missingness of 
+`followers` does not appear to depend on popularity.
+
+<iframe
+  src="assets/missingness_permutation.html"
+  width="800"
+  height="600"
+  frameborder="0"
+></iframe>
+
+**Test 2: Followers Missingness vs. Genre**
+
+- **Null Hypothesis:** The missingness of `followers` does not depend on `track_genre`.
+- **Alternative Hypothesis:** The missingness of `followers` depends on `track_genre`.
+- **Test Statistic:** Total Variation Distance (TVD) between genre distributions.
+- **P-value:** Around 0.001
+
+With a p-value of 0.001, we reject the null hypothesis. The missingness of `followers` 
+is significantly dependent on genre, suggesting that certain genres are more likely 
+to have missing follower data than others.
+
+<iframe
+  src="assets/genre_missingness.html"
+  width="800"
+  height="600"
+  frameborder="0"
+></iframe>
+
+Since `followers` is used as a feature in our predictive model, understanding its 
+missingness is important. It shows that obscure artists with missing follower data 
+may be systematically harder to classify as popular or not popular.
+
+
+## Hypothesis Testing
+
+**Research Question:** Do explicit tracks tend to be more popular than non-explicit tracks?
+
+- **Null Hypothesis:** Explicit and non-explicit tracks have the same mean popularity — 
+any observed difference is due to random chance.
+- **Alternative Hypothesis:** Explicit tracks have higher mean popularity than 
+non-explicit tracks.
+- **Test Statistic:** Difference in mean popularity (explicit minus non-explicit). 
+Mean difference was chosen because popularity is a numerical variable and we want to 
+detect a shift in the center of the distribution between the two groups.
+- **Significance Level:** 0.05 — a standard threshold that balances the risk of 
+false positives and false negatives.
+- **Observed Difference:** 5.063
+- **P-value:** < 0.001
+
+A one-tailed permutation test was used because our alternative hypothesis predicts 
+a specific direction stating explicit tracks are more popular, not just different. 
+A permutation test was chosen over a t-test because the popularity distribution is 
+heavily skewed, violating the normality assumption required for a t-test.
+
+With a p-value of < 0.001, we reject the null hypothesis. In 1000 permutations, 
+the observed difference of 5.063 was never exceeded by chance, suggesting the 
+difference is statistically significant. However, since this is an observational 
+dataset and not a randomized controlled trial, we cannot conclude that explicit 
+content directly causes higher popularity. Other factors such as genre or artist 
+following size may contribute to this pattern.
+
